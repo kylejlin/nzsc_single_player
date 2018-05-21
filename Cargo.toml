@@ -7,5 +7,7 @@ repository = "https://github.com/kylejlin/nzsc_single_player"
 
 license = "MIT"
 
+description = "A complete implementation of NZSC written in Rust."
+
 [dependencies]
 rand = "0.3.14"
