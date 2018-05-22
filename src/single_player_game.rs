@@ -1,11 +1,10 @@
-extern crate rand;
-use self::rand::Rng;
-
 use super::moves::Move;
 use super::boosters::Booster;
 use super::characters::Character;
 use super::outcomes;
 use super::players::Player;
+
+use super::prfg;
 
 use super::command_line_app;
 
@@ -20,10 +19,6 @@ const DESTRUCTIVE_MOVES: [Move; 2] = [
     Move::Zap,
     Move::AcidSpray
 ];
-
-fn rand_index_incl(max_incl: usize) -> usize {
-    rand::thread_rng().gen_range(0, max_incl + 1) as usize
-}
 
 fn get_victory_term_by_margin(margin: u8) -> String {
     match margin {
@@ -41,14 +36,22 @@ fn get_victory_term_by_margin(margin: u8) -> String {
 pub struct SinglePlayerNZSCGame {
     human: Player,
     computer: Player,
+    prfg: prfg::PseudorandomFloatGenerator,
 }
 
 impl SinglePlayerNZSCGame {
-    pub fn new() -> SinglePlayerNZSCGame {
+    pub fn new(seed: i64) -> SinglePlayerNZSCGame {
         SinglePlayerNZSCGame {
             human: Player::new(),
             computer: Player::new(),
+            prfg: prfg::PseudorandomFloatGenerator::new(seed),
         }
+    }
+
+    fn generate_random_index_from_inclusive_max(&mut self, inclusive_max: usize) -> usize {
+        let inclusive_max = inclusive_max as f64;
+
+        (self.prfg.next() * (inclusive_max + 1.0)).floor() as usize
     }
 }
 
@@ -66,7 +69,7 @@ impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
                 if self.human.available_moves().contains(&selected_human_move) {
                     let available_computer_moves = self.computer.available_moves();
                     let selected_computer_move = available_computer_moves[
-                        rand_index_incl(available_computer_moves.len() - 1)
+                        self.generate_random_index_from_inclusive_max(available_computer_moves.len() - 1)
                     ];
 
                     output = format!("You chose {}. Computer chose {}.\n", selected_human_move, selected_computer_move);
@@ -221,7 +224,7 @@ impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
         } else if let Some(human_character) = self.human.character {
             let computer_character = self.computer.character.expect("Impossible state: Human has character but not computer.");
             if let Ok(selected_human_booster) = Booster::from_str(&response[..]) {
-                let selected_computer_booster = computer_character.get_boosters()[rand_index_incl(1)];
+                let selected_computer_booster = computer_character.get_boosters()[self.generate_random_index_from_inclusive_max(1)];
                 self.human.booster = Some(selected_human_booster);
                 self.computer.booster = Some(selected_computer_booster);
 
@@ -262,7 +265,7 @@ impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
                     Character::Zombie,
                     Character::Samurai,
                     Character::Clown
-                ][rand_index_incl(3)];
+                ][self.generate_random_index_from_inclusive_max(3)];
                 if selected_human_character == selected_computer_character {
                     self.human.character_streak.update(selected_human_character);
                     self.computer.character_streak.update(selected_computer_character);
