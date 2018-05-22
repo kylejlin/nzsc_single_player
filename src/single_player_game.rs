@@ -111,15 +111,14 @@ impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
                     self.human.points += points[0];
                     self.computer.points += points[1];
 
-                    if points[0] == 0 && points[1] == 0 {
-                        output.push_str("As a result, neither of you gets a point.\n");
-                    } else if points[0] == 0 && points[1] == 1 {
-                        output.push_str("As a result, the computer gets a point.\n");
-                    } else if points[0] == 1 && points[1] == 0 {
-                        output.push_str("As a result, you get a point.\n");
-                    } else if points[0] == 1 && points[1] == 1 {
-                        output.push_str("As a result, both of you get a point.\n");
-                    }
+                    let outcome_message = match (points[0], points[1]) {
+                        (0, 0) => "As a result, neither of you gets a point.\n",
+                        (0, 1) => "As a result, the computer gets a point.\n",
+                        (1, 0) => "As a result, you get a point.\n",
+                        (1, 1) => "As a result, both of you get a point.\n",
+                        _ => panic!("Impossible state: Impossible move vs. move outcome."),
+                    };
+                    output.push_str(outcome_message);
 
                     output.push_str(
                         &format!("The score is now {}-{}.\n\n", self.human.points, self.computer.points)[..]
