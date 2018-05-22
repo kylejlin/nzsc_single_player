@@ -275,14 +275,42 @@ impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
                 } else {
                     self.human.character = Some(selected_human_character);
                     self.computer.character = Some(selected_computer_character);
+
                     output.push_str(
-                        &format!("\nYou chose {}.\nComputer chose {}.\n\n", selected_human_character, selected_computer_character)[..]
+                        &format!("\nYou chose {}.\nComputer chose {}.\n", selected_human_character, selected_computer_character)[..]
                     );
-                    output.push_str("Choose a booster:\n");
-                    for booster in &selected_human_character.get_boosters() {
+
+                    let headstart = outcomes::get_headstart(selected_human_character, selected_computer_character);
+                    self.human.points += headstart.0;
+                    self.human.points += headstart.1;
+
+                    let headstart_message = match headstart {
+                        outcomes::Headstart(0, 0) => "As a result, neither of you gets a headstart.\n",
+                        outcomes::Headstart(0, 1) => "As a result, the computer gets a headstart.\n",
+                        outcomes::Headstart(1, 0) => "As a result, you get a headstart.\n",
+                        _ => panic!("Impossible state: More than one character has a headstart!"),
+                    };
+                    output.push_str(headstart_message);
+                    output.push_str(
+                        &format!("The score is now {}-{}.\n\n", self.human.points, self.computer.points)[..]
+                    );
+
+                    if self.computer.points < 5 {
+                        output.push_str("Choose a booster:\n");
+                        for booster in &selected_human_character.get_boosters() {
+                            output.push_str(
+                                &format!("\t{}\n", booster)[..]
+                            );
+                        }
+                    } else {
                         output.push_str(
-                            &format!("\t{}\n", booster)[..]
+                            &format!("You lost {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.computer.points - self.human.points))[..]
                         );
+
+                        return command_line_app::Prompt {
+                            text: output,
+                            is_final: true,
+                        };
                     }
                 }
             } else {
