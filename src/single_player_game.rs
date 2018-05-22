@@ -119,7 +119,7 @@ impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
                     }
 
                     output.push_str(
-                        &format!("The score is now {}-{}.\n", self.human.points, self.computer.points)[..]
+                        &format!("The score is now {}-{}.\n\n", self.human.points, self.computer.points)[..]
                     );
 
                     if self.human.points == self.computer.points
