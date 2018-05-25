@@ -57,7 +57,7 @@ impl SinglePlayerNZSCGame {
 
 impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
     fn initial_prompt(&self) -> String {
-        "Choose a character:\n\tNinja\n\tZombie\n\tSamurai\n\tClown".to_string()
+        "Choose a character:\n\tNinja\n\tZombie\n\tSamurai\n\tClown\n".to_string()
     }
 
     fn next(&mut self, response: String) -> command_line_app::Prompt {
@@ -314,10 +314,10 @@ impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
                         });
                     }
 
-                    output.push_str("Choose a character:");
+                    output.push_str("Choose a character:\n");
                     for character in &available_human_characters {
                         output.push_str(
-                            &format!("\n\t{}", character)
+                            &format!("\t{}\n", character)
                         );
                     }
                 } else {
@@ -366,7 +366,7 @@ impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
                 output = format!("\"{}\" is not a character. 3 wait penalty!\nThe score is now {}-{}.\n\n", response, self.human.points, self.computer.points);
 
                 if self.computer.points  < 5 {
-                    output.push_str("Choose a character:\n\tNinja\n\tZombie\n\tSamurai\n\tClown")
+                    output.push_str("Choose a character:\n\tNinja\n\tZombie\n\tSamurai\n\tClown\n")
                 } else {
                     output.push_str(
                         &format!("You lost {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.computer.points - self.human.points))[..]
