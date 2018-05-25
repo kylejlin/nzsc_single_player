@@ -1,33 +1,27 @@
 pub struct PseudorandomFloatGenerator {
-    seed: i64,
+    state: u32,
 }
 
 /// Generates floats (f64) between 0.0 (inclusive) and 1.0 (exclusive).
 impl PseudorandomFloatGenerator {
-    pub fn new(seed: i64) -> PseudorandomFloatGenerator {
+    pub fn new(seed: u32) -> PseudorandomFloatGenerator {
         PseudorandomFloatGenerator {
-            seed: PseudorandomFloatGenerator::sanitize_seed(seed),
-        }
-    }
-
-    fn sanitize_seed(seed: i64) -> i64 {
-        const MAX32: i64 = 2147483647;
-
-        let seed = seed % MAX32;
-
-        if seed < 0 {
-            seed + MAX32
-        } else {
-            seed
+            state: seed,
         }
     }
 
     pub fn next(&mut self) -> f64 {
-        const MAX32: i64 = 2147483647;
-        const MAGIC_NUMBER: i64 = 16807;
+        // Calculate random u32.
+        // https://en.wikipedia.org/wiki/Xorshift
+        let mut x = self.state;
+        x ^= x << 13;
+    	x ^= x >> 17;
+    	x ^= x << 5;
+        let x = x;
 
-        self.seed = self.seed * MAGIC_NUMBER % MAX32;
+    	self.state = x;
 
-        (self.seed as f64 - 1.0) / (MAX32 as f64 - 1.0)
+        // Convert to u16 and divide by (2 ** 16) to get random float
+        (x >> 16) as f64 / 65536.0
     }
 }

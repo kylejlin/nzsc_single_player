@@ -40,7 +40,7 @@ pub struct SinglePlayerNZSCGame {
 }
 
 impl SinglePlayerNZSCGame {
-    pub fn new(seed: i64) -> SinglePlayerNZSCGame {
+    pub fn new(seed: u32) -> SinglePlayerNZSCGame {
         SinglePlayerNZSCGame {
             human: Player::new(),
             computer: Player::new(),
