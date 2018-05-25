@@ -159,8 +159,13 @@ impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
 
                     // NZSC Rule 3.4.1
                     if self.human.exhausted_moves.contains(&selected_human_move) {
+                        let penalty_message = if SINGLE_USE_MOVES.contains(&selected_human_move) {
+                            format!("{} is single-use. You cannot use it again.", selected_human_move)
+                        } else {
+                            format!("{} has been destroyed. You cannot use it anymore.", selected_human_move)
+                        };
                         self.computer.points += self.human.penalize_waits(4);
-                        output = format!("{} is single-use. You cannot use it again. 4 wait penalty!\nThe score is now {}-{}.\n", selected_human_move, self.human.points, self.computer.points);
+                        output = format!("{} 4 wait penalty!\nThe score is now {}-{}.\n", penalty_message, self.human.points, self.computer.points);
                     }
                     // NZSC Rule 3.4.2
                     else if self.human.move_streak.repeated_move == Some(selected_human_move)
