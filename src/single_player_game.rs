@@ -299,8 +299,27 @@ impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
                     self.human.character_streak.update(selected_human_character);
                     self.computer.character_streak.update(selected_computer_character);
                     output.push_str(
-                        &format!("\nBoth of you chose {0}, so you must repick.\nYou have picked {0} {1} times.\nComputer has picked {0} {2} times.\n", selected_human_character, self.human.character_streak.times, self.computer.character_streak.times)[..]
+                        &format!("\nBoth of you chose {0}, so you must repick.\nYou have picked {0} {1} times.\nComputer has picked {0} {2} times.\n\n", selected_human_character, self.human.character_streak.times, self.computer.character_streak.times)[..]
                     );
+
+                    let mut available_human_characters = vec![
+                        Character::Ninja,
+                        Character::Zombie,
+                        Character::Samurai,
+                        Character::Clown
+                    ];
+                    if self.human.character_streak.times == 3 {
+                        available_human_characters.retain(|&c| {
+                            Some(c) != self.human.character_streak.repeated_character
+                        });
+                    }
+
+                    output.push_str("Choose a character:");
+                    for character in &available_human_characters {
+                        output.push_str(
+                            &format!("\n\t{}", character)
+                        );
+                    }
                 } else {
                     self.human.character = Some(selected_human_character);
                     self.computer.character = Some(selected_computer_character);
