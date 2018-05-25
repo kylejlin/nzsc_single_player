@@ -1,6 +1,6 @@
 [package]
 name = "nzsc_single_player"
-version = "0.4.3"
+version = "0.4.4"
 authors = ["Kyle Lin <kylejlin.us@gmail.com>"]
 
 repository = "https://github.com/nzsc-org/nzsc_single_player"
