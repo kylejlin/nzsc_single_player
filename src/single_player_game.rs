@@ -223,15 +223,40 @@ impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
         } else if let Some(human_character) = self.human.character {
             let computer_character = self.computer.character.expect("Impossible state: Human has character but not computer.");
             if let Ok(selected_human_booster) = Booster::from_str(&response[..]) {
-                let selected_computer_booster = computer_character.get_boosters()[self.generate_random_index_from_inclusive_max(1)];
-                self.human.booster = Some(selected_human_booster);
-                self.computer.booster = Some(selected_computer_booster);
+                if human_character.get_boosters().contains(&selected_human_booster) {
+                    let selected_computer_booster = computer_character.get_boosters()[self.generate_random_index_from_inclusive_max(1)];
+                    self.human.booster = Some(selected_human_booster);
+                    self.computer.booster = Some(selected_computer_booster);
 
-                output = format!("You chose {}.\nComputer chose {}.\nLet the battle begin!\n\nChoose a move:\n", selected_human_booster, selected_computer_booster);
-                for available_move in &self.human.available_moves() {
+                    output = format!("You chose {}.\nComputer chose {}.\nLet the battle begin!\n\nChoose a move:\n", selected_human_booster, selected_computer_booster);
+                    for available_move in &self.human.available_moves() {
+                        output.push_str(
+                            &format!("\t{}\n", available_move)[..]
+                        );
+                    }
+                } else {
+                    self.computer.points += self.human.penalize_waits(3);
                     output.push_str(
-                        &format!("\t{}\n", available_move)[..]
+                        &format!("{} is from the wrong character. 3 wait penalty!\nThe score is now {}-{}.\n\n", selected_human_booster, self.human.points, self.computer.points)[..]
                     );
+
+                    if self.computer.points < 5 {
+                        output.push_str("Choose a booster:\n");
+                        for booster in &human_character.get_boosters() {
+                            output.push_str(
+                                &format!("\t{}\n", booster)[..]
+                            );
+                        }
+                    } else {
+                        output.push_str(
+                            &format!("You lost {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.computer.points - self.human.points))[..]
+                        );
+
+                        return command_line_app::Prompt {
+                            text: output,
+                            is_final: true,
+                        };
+                    }
                 }
             } else {
                 self.computer.points += self.human.penalize_waits(3);
