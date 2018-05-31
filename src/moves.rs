@@ -114,3 +114,14 @@ impl fmt::Display for Move {
         write!(f, "{}", string)
     }
 }
+
+pub const SINGLE_USE_MOVES: [Move; 3] = [
+    Move::Zap,
+    Move::Regenerate,
+    Move::AcidSpray
+];
+
+pub const DESTRUCTIVE_MOVES: [Move; 2] = [
+    Move::Zap,
+    Move::AcidSpray
+];

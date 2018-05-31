@@ -1,50 +1,53 @@
-use super::moves::Move;
-use super::boosters::Booster;
-use super::characters::Character;
-use super::outcomes;
-use super::players::Player;
-
+use super::players::{
+    CharacterlessPlayer,
+    BoosterlessPlayer,
+    Player,
+};
+use super::io;
 use super::prfg;
 
-use super::command_line_app;
+use super::moves::{
+    Move,
+    SINGLE_USE_MOVES,
+    DESTRUCTIVE_MOVES,
+};
+use super::boosters::Booster;
+use super::outcomes;
 
-use std::str::FromStr;
-
-const SINGLE_USE_MOVES: [Move; 3] = [
-    Move::Zap,
-    Move::Regenerate,
-    Move::AcidSpray
-];
-const DESTRUCTIVE_MOVES: [Move; 2] = [
-    Move::Zap,
-    Move::AcidSpray
-];
-
-fn get_victory_term_by_margin(margin: u8) -> String {
-    match margin {
-        1 => "Clinch".to_string(),
-        2 => "Hypnotization".to_string(),
-        3 => "Obliteration".to_string(),
-        4 => "Annihilation".to_string(),
-        5 => "Wipeout".to_string(),
-        _ => {
-            panic!("Impossible victory margin: {}", margin);
-        }
-    }
+/// A phase of the game.
+#[derive(Clone)]
+pub enum Phase {
+    CharacterChoosing {
+        human: CharacterlessPlayer,
+        computer: CharacterlessPlayer,
+    },
+    BoosterChoosing {
+        human: BoosterlessPlayer,
+        computer: BoosterlessPlayer
+    },
+    MoveChoosing {
+        human: Player,
+        computer: Player,
+    },
+    GameOver {
+        human_points: u8,
+        computer_points: u8,
+    },
 }
 
 pub struct SinglePlayerNZSCGame {
-    human: Player,
-    computer: Player,
     prfg: prfg::PseudorandomFloatGenerator,
+    pub phase: Phase,
 }
 
 impl SinglePlayerNZSCGame {
     pub fn new(seed: u32) -> SinglePlayerNZSCGame {
         SinglePlayerNZSCGame {
-            human: Player::new(),
-            computer: Player::new(),
             prfg: prfg::PseudorandomFloatGenerator::new(seed),
+            phase: Phase::CharacterChoosing {
+                human: CharacterlessPlayer::new(),
+                computer: CharacterlessPlayer::new(),
+            }
         }
     }
 
@@ -53,382 +56,455 @@ impl SinglePlayerNZSCGame {
 
         (self.prfg.next() * (inclusive_max + 1.0)).floor() as usize
     }
-}
 
-impl command_line_app::CommandLineApp for SinglePlayerNZSCGame {
-    fn initial_prompt(&self) -> String {
-        "Choose a character:\n\tNinja\n\tZombie\n\tSamurai\n\tClown\n".to_string()
-    }
-
-    fn next(&mut self, response: String) -> command_line_app::Prompt {
-        let mut output = String::new();
-
-        if let Some(human_booster) = self.human.booster {
-            let computer_booster = self.computer.booster.expect("Impossible state: Human has booster but not computer.");
-            if let Ok(selected_human_move) = Move::from_str(&response[..]) {
-                if self.human.available_moves().contains(&selected_human_move) {
-                    let available_computer_moves = self.computer.available_moves();
-                    let selected_computer_move = available_computer_moves[
-                        self.generate_random_index_from_inclusive_max(available_computer_moves.len() - 1)
-                    ];
-
-                    output = format!("You chose {}. Computer chose {}.\n", selected_human_move, selected_computer_move);
-
-                    self.human.move_streak.update(selected_human_move);
-                    self.computer.move_streak.update(selected_computer_move);
-
-                    if SINGLE_USE_MOVES.contains(&selected_human_move)
-                        || DESTRUCTIVE_MOVES.contains(&selected_computer_move)
-                    {
-                        self.human.exhausted_moves.push(selected_human_move);
-                    }
-                    if SINGLE_USE_MOVES.contains(&selected_computer_move)
-                        || DESTRUCTIVE_MOVES.contains(&selected_human_move)
-                    {
-                        self.computer.exhausted_moves.push(selected_computer_move);
-                    }
-
-                    let mut points = outcomes::get_points(vec![selected_human_move, selected_computer_move]);
-
-                    if selected_human_move == Move::ShadowFireball && selected_computer_move == Move::Smash {
-                        if computer_booster == Booster::Strong {
-                            points[0] = 0;
-                            points[1] = 1;
-                        } else {
-                            points[0] = 1;
-                            points[1] = 0;
-                        }
-                    } else if selected_human_move == Move::Smash && selected_computer_move == Move::ShadowFireball {
-                        if human_booster == Booster::Strong {
-                            points[0] = 1;
-                            points[1] = 0;
-                        } else {
-                            points[0] = 0;
-                            points[1] = 1;
-                        }
-                    }
-
-                    self.human.points += points[0];
-                    self.computer.points += points[1];
-
-                    let outcome_message = match (points[0], points[1]) {
-                        (0, 0) => "As a result, neither of you gets a point.\n",
-                        (0, 1) => "As a result, the computer gets a point.\n",
-                        (1, 0) => "As a result, you get a point.\n",
-                        (1, 1) => "As a result, both of you get a point.\n",
-                        _ => panic!("Impossible state: Impossible move vs. move outcome."),
-                    };
-                    output.push_str(outcome_message);
-
-                    output.push_str(
-                        &format!("The score is now {}-{}.\n\n", self.human.points, self.computer.points)[..]
-                    );
-
-                    if self.human.points == self.computer.points
-                        && self.human.points >= 5
-                    {
-                        self.human.points = 4;
-                        self.computer.points = 4;
-                        output.push_str("Since there is a tie, the score will be reset to 4-4.\n\n");
-                    }
-
-                    if self.human.points < 5 && self.computer.points < 5 {
-                        output.push_str("Choose a move:\n");
-                        for available_move in &self.human.available_moves() {
-                            output.push_str(
-                                &format!("\t{}\n", available_move)[..]
-                            );
-                        }
-                    } else {
-                        let game_over_message = if self.human.points > self.computer.points {
-                            format!("You won {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.human.points - self.computer.points))
-                        } else {
-                            format!("You lost {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.computer.points - self.human.points))
-                        };
-                        output.push_str(&game_over_message[..]);
-                        return command_line_app::Prompt {
-                            text: output,
-                            is_final: true,
-                        };
-                    }
-                } else {
-                    let mut human_booster_moves: Vec<Move> = vec![];
-                    for booster in &self.human.character.expect("Impossible state: Human has booster but no character").get_boosters() {
-                        human_booster_moves.extend(booster.get_moves());
-                    }
-
-                    // NZSC Rule 3.4.1
-                    if self.human.exhausted_moves.contains(&selected_human_move) {
-                        let penalty_message = if SINGLE_USE_MOVES.contains(&selected_human_move) {
-                            format!("{} is single-use. You cannot use it again.", selected_human_move)
-                        } else {
-                            format!("{} has been destroyed. You cannot use it anymore.", selected_human_move)
-                        };
-                        self.computer.points += self.human.penalize_waits(4);
-                        output = format!("{} 4 wait penalty!\nThe score is now {}-{}.\n", penalty_message, self.human.points, self.computer.points);
-                    }
-                    // NZSC Rule 3.4.2
-                    else if self.human.move_streak.repeated_move == Some(selected_human_move)
-                        && self.human.move_streak.times == 3
-                    {
-                        self.computer.points += self.human.penalize_waits(3);
-                        output = format!("You have already chosen {} 3 times in a row. You must choose something else before choosing it again. 3 wait penalty!\nThe score is now {}-{}.\n", selected_human_move, self.human.points, self.computer.points);
-                    }
-                    // NZSC Rule 3.4.3
-                    else if human_booster_moves.contains(&selected_human_move) {
-                        self.computer.points += self.human.penalize_waits(2);
-                        output = format!("{} is from the wrong booster. 2 wait penalty!\nThe score is now {}-{}.\n", selected_human_move, self.human.points, self.computer.points);
-                    }
-                    // NZSC Rule 3.4.4
-                    else {
-                        self.computer.points += self.human.penalize_waits(3);
-                        output = format!("{} is from the wrong character. 3 wait penalty!\nThe score is now {}-{}.\n\n", selected_human_move, self.human.points, self.computer.points);
-                    }
-
-                    if self.computer.points < 5 {
-                        output.push_str("Choose a move:\n");
-                        for available_move in &self.human.available_moves() {
-                            output.push_str(
-                                &format!("\t{}\n", available_move)[..]
-                            );
-                        }
-                    } else {
-                        output.push_str(
-                            &format!("You lost {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.computer.points - self.human.points))[..]
-                        );
-
-                        return command_line_app::Prompt {
-                            text: output,
-                            is_final: true,
-                        };
-                    }
-                }
-            } else {
-                self.computer.points += self.human.penalize_waits(4);
-                output = format!("\"{}\" is not a move. 4 wait penalty!\nThe score is now {}-{}.\n\n", response, self.human.points, self.computer.points);
-
-                if self.computer.points < 5 {
-                    output.push_str("Choose a move:\n");
-                    for available_move in &self.human.available_moves() {
-                        output.push_str(
-                            &format!("\t{}\n", available_move)[..]
-                        );
-                    }
-                } else {
-                    output.push_str(
-                        &format!("You lost {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.computer.points - self.human.points))[..]
-                    );
-
-                    return command_line_app::Prompt {
-                        text: output,
-                        is_final: true,
-                    };
-                }
-            }
-        } else if let Some(human_character) = self.human.character {
-            let computer_character = self.computer.character.expect("Impossible state: Human has character but not computer.");
-            if let Ok(selected_human_booster) = Booster::from_str(&response[..]) {
-                if human_character.get_boosters().contains(&selected_human_booster) {
-                    let selected_computer_booster = computer_character.get_boosters()[self.generate_random_index_from_inclusive_max(1)];
-                    self.human.booster = Some(selected_human_booster);
-                    self.computer.booster = Some(selected_computer_booster);
-
-                    output = format!("You chose {}.\nComputer chose {}.\nLet the battle begin!\n\nChoose a move:\n", selected_human_booster, selected_computer_booster);
-                    for available_move in &self.human.available_moves() {
-                        output.push_str(
-                            &format!("\t{}\n", available_move)[..]
-                        );
-                    }
-                } else {
-                    self.computer.points += self.human.penalize_waits(3);
-                    output.push_str(
-                        &format!("{} is from the wrong character. 3 wait penalty!\nThe score is now {}-{}.\n\n", selected_human_booster, self.human.points, self.computer.points)[..]
-                    );
-
-                    if self.computer.points < 5 {
-                        output.push_str("Choose a booster:\n");
-                        for booster in &human_character.get_boosters() {
-                            output.push_str(
-                                &format!("\t{}\n", booster)[..]
-                            );
-                        }
-                    } else {
-                        output.push_str(
-                            &format!("You lost {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.computer.points - self.human.points))[..]
-                        );
-
-                        return command_line_app::Prompt {
-                            text: output,
-                            is_final: true,
-                        };
-                    }
-                }
-            } else {
-                self.computer.points += self.human.penalize_waits(3);
-                output.push_str(
-                    &format!("\"{}\" is not a booster. 3 wait penalty!\nThe score is now {}-{}.\n\n", response, self.human.points, self.computer.points)[..]
-                );
-
-                if self.computer.points < 5 {
-                    output.push_str("Choose a booster:\n");
-                    for booster in &human_character.get_boosters() {
-                        output.push_str(
-                            &format!("\t{}\n", booster)[..]
-                        );
-                    }
-                } else {
-                    output.push_str(
-                        &format!("You lost {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.computer.points - self.human.points))[..]
-                    );
-
-                    return command_line_app::Prompt {
-                        text: output,
-                        is_final: true,
-                    };
-                }
+    pub fn initial_output(&self) -> io::Output {
+        if let Phase::CharacterChoosing { ref human, computer: _ }  = self.phase {
+            io::Output {
+                question: Some(io::Question::ChooseCharacter {
+                    available_characters: human.available_characters(),
+                }),
+                notifications: vec![],
             }
         } else {
-            if let Ok(selected_human_character) = Character::from_str(&response[..]) {
-                if self.human.character_streak.times == 3
-                    && Some(selected_human_character) == self.human.character_streak.repeated_character
-                {
-                    self.computer.points += self.human.penalize_waits(3);
-                    output.push_str(
-                        &format!("\nYou already chose {} 3 times in a row. You must choose another character before choosing it again. 3 wait penalty!\nThe score is now {}-{}.\n\n", selected_human_character, self.human.points, self.computer.points)[..]
-                    );
+            panic!("Initial output called at wrong phase!");
+        }
+    }
 
-                    if self.computer.points < 5 {
-                        let mut available_human_characters = vec![
-                            Character::Ninja,
-                            Character::Zombie,
-                            Character::Samurai,
-                            Character::Clown
-                        ];
-                        available_human_characters.retain(|&c| {
-                            Some(c) != self.human.character_streak.repeated_character
+    pub fn next(&mut self, answer: io::Answer) -> Result<io::Output, ()> {
+        match (self.phase.clone(), answer) {
+            (
+                Phase::CharacterChoosing { mut human, mut computer },
+                io::Answer::CharacterSelection(character_selection)
+            ) => {
+                // Closure for the sake of DRY
+                let penalize_human = |waits, penalty_notification, mut human: CharacterlessPlayer, mut computer: CharacterlessPlayer, slf: &mut SinglePlayerNZSCGame| -> Result<io::Output, ()> {
+                    computer.points += human.penalize_waits(waits);
+
+                    let mut output = io::Output {
+                        question: None,
+                        notifications: vec![
+                            penalty_notification,
+                            io::Notification::ScoreUpdate {
+                                human_points: human.points,
+                                computer_points: computer.points,
+                            }
+                        ],
+                    };
+
+                    if computer.points < 5 {
+                        output.question = Some(io::Question::ChooseCharacter {
+                            available_characters: human.available_characters(),
                         });
 
-                        output.push_str("Choose a character:\n");
-                        for character in &available_human_characters {
-                            output.push_str(
-                                &format!("\t{}\n", character)
-                            );
-                        }
+                        slf.phase = Phase::CharacterChoosing {
+                            human,
+                            computer,
+                        };
                     } else {
-                        output.push_str(
-                            &format!("You lost {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.computer.points - self.human.points))[..]
+                        output.notifications.push(
+                            io::Notification::GameOver {
+                                human_points: human.points,
+                                computer_points: computer.points,
+                            }
                         );
 
-                        return command_line_app::Prompt {
-                            text: output,
-                            is_final: true,
+                        slf.phase = Phase::GameOver {
+                            human_points: human.points,
+                            computer_points: computer.points,
                         };
                     }
-                } else {
-                    let mut available_computer_characters = vec![
-                        Character::Ninja,
-                        Character::Zombie,
-                        Character::Samurai,
-                        Character::Clown
-                    ];
-                    if self.computer.character_streak.times == 3 {
-                        available_computer_characters.retain(|&c| {
-                            Some(c) != self.computer.character_streak.repeated_character
-                        });
-                    }
-                    let selected_computer_character = available_computer_characters[
-                        self.generate_random_index_from_inclusive_max(available_computer_characters.len() - 1)
-                    ];
 
-                    if selected_human_character == selected_computer_character {
-                        self.human.character_streak.update(selected_human_character);
-                        self.computer.character_streak.update(selected_computer_character);
-                        output.push_str(
-                            &format!("\nBoth of you chose {0}, so you must repick.\nYou have picked {0} {1} times.\nComputer has picked {0} {2} times.\n\n", selected_human_character, self.human.character_streak.times, self.computer.character_streak.times)[..]
-                        );
+                    Ok(output)
+                };
 
-                        let mut available_human_characters = vec![
-                            Character::Ninja,
-                            Character::Zombie,
-                            Character::Samurai,
-                            Character::Clown
-                        ];
-                        if self.human.character_streak.times == 3 {
-                            available_human_characters.retain(|&c| {
-                                Some(c) != self.human.character_streak.repeated_character
-                            });
-                        }
+                match character_selection {
+                    io::CharacterSelection::Character(selected_human_character) => {
+                        if human.available_characters().contains(&selected_human_character) {
+                            let available_computer_characters = computer.available_characters();
+                            let selected_computer_character = available_computer_characters[
+                                self.generate_random_index_from_inclusive_max(available_computer_characters.len() - 1)
+                            ];
 
-                        output.push_str("Choose a character:\n");
-                        for character in &available_human_characters {
-                            output.push_str(
-                                &format!("\t{}\n", character)
-                            );
-                        }
-                    } else {
-                        self.human.character = Some(selected_human_character);
-                        self.computer.character = Some(selected_computer_character);
+                            if selected_human_character == selected_computer_character {
+                                human.character_streak.add(selected_human_character);
+                                computer.character_streak.add(selected_computer_character);
 
-                        output.push_str(
-                            &format!("\nYou chose {}.\nComputer chose {}.\n", selected_human_character, selected_computer_character)[..]
-                        );
+                                let available_human_characters = human.available_characters();
 
-                        let headstart = outcomes::get_headstart(selected_human_character, selected_computer_character);
-                        self.human.points += headstart.0;
-                        self.human.points += headstart.1;
+                                self.phase = Phase::CharacterChoosing {
+                                    human,
+                                    computer,
+                                };
 
-                        let headstart_message = match headstart {
-                            outcomes::Headstart(0, 0) => "As a result, neither of you gets a headstart.\n",
-                            outcomes::Headstart(0, 1) => "As a result, the computer gets a headstart.\n",
-                            outcomes::Headstart(1, 0) => "As a result, you get a headstart.\n",
-                            _ => panic!("Impossible state: More than one character has a headstart!"),
-                        };
-                        output.push_str(headstart_message);
-                        output.push_str(
-                            &format!("The score is now {}-{}.\n\n", self.human.points, self.computer.points)[..]
-                        );
+                                Ok(io::Output {
+                                    question: Some(
+                                        io::Question::ChooseCharacter { available_characters: available_human_characters }
+                                    ),
+                                    notifications: vec![
+                                        io::Notification::SameCharacterSelection {
+                                            both_character: selected_human_character,
+                                        }
+                                    ],
+                                })
+                            } else {
+                                let headstart = outcomes::get_headstart(selected_human_character, selected_computer_character);
 
-                        if self.computer.points < 5 {
-                            output.push_str("Choose a booster:\n");
-                            for booster in &selected_human_character.get_boosters() {
-                                output.push_str(
-                                    &format!("\t{}\n", booster)[..]
-                                );
+                                human.points += headstart.0;
+                                computer.points += headstart.1;
+
+                                let who_gets_the_headstart = match headstart {
+                                    outcomes::Headstart(0, 0) => io::WhoGetsTheHeadstart::Neither,
+                                    outcomes::Headstart(0, 1) => io::WhoGetsTheHeadstart::JustComputer,
+                                    outcomes::Headstart(1, 0) => io::WhoGetsTheHeadstart::JustHuman,
+                                    outcomes::Headstart(a, b) => panic!("Illegal headstart: {}-{}!", a, b),
+                                };
+
+                                let human = human.to_boosterless_player(selected_human_character);
+                                let computer = computer.to_boosterless_player(selected_computer_character);
+
+                                let human_character = human.character;
+                                let computer_character = computer.character;
+
+
+                                // Human might have incurred penalties before successfully choosing character.
+                                if computer.points < 5 {
+                                    self.phase = Phase::BoosterChoosing {
+                                        human,
+                                        computer,
+                                    };
+
+                                    Ok(io::Output {
+                                        question: Some(
+                                            io::Question::ChooseBooster { available_boosters: human_character.get_boosters() }
+                                        ),
+                                        notifications: vec![
+                                            io::Notification::CharacterSelectionAndHeadstart {
+                                                human_character: human_character,
+                                                computer_character: computer_character,
+                                                who_gets_the_headstart,
+                                            }
+                                        ],
+                                    })
+                                } else {
+                                    self.phase = Phase::GameOver {
+                                        human_points: human.points,
+                                        computer_points: computer.points,
+                                    };
+
+                                    Ok(io::Output {
+                                        question: None,
+                                        notifications: vec![
+                                            io::Notification::CharacterSelectionAndHeadstart {
+                                                human_character: human_character,
+                                                computer_character: computer_character,
+                                                who_gets_the_headstart,
+                                            },
+                                            io::Notification::GameOver {
+                                                human_points: human.points,
+                                                computer_points: computer.points,
+                                            }
+                                        ],
+                                    })
+                                }
                             }
                         } else {
-                            output.push_str(
-                                &format!("You lost {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.computer.points - self.human.points))[..]
-                            );
-
-                            return command_line_app::Prompt {
-                                text: output,
-                                is_final: true,
-                            };
+                            penalize_human(3, io::Notification::CharacterThreeTimesInARowPenalty {
+                                attempted_character: selected_human_character,
+                            }, human, computer, self)
                         }
-                    }
+                    },
+                    io::CharacterSelection::Nonexistent(attempted_character_name) => {
+                        penalize_human(4, io::Notification::CharacterNonexistentPenalty {
+                            attempted_character_name,
+                        }, human, computer, self)
+                    },
                 }
-            } else {
-                self.computer.points += self.human.penalize_waits(3);
-                output = format!("\"{}\" is not a character. 3 wait penalty!\nThe score is now {}-{}.\n\n", response, self.human.points, self.computer.points);
+            },
+            (
+                Phase::BoosterChoosing { human, computer },
+                io::Answer::BoosterSelection(booster_selection)
+            ) => {
+                // Closure for the sake of DRY
+                let penalize_human = |waits, penalty_notification, mut human: BoosterlessPlayer, mut computer: BoosterlessPlayer, slf: &mut SinglePlayerNZSCGame| -> Result<io::Output, ()> {
+                    computer.points += human.penalize_waits(waits);
 
-                if self.computer.points  < 5 {
-                    output.push_str("Choose a character:\n\tNinja\n\tZombie\n\tSamurai\n\tClown\n")
-                } else {
-                    output.push_str(
-                        &format!("You lost {}-{} ({}).\n", self.human.points, self.computer.points, get_victory_term_by_margin(self.computer.points - self.human.points))[..]
-                    );
-
-                    return command_line_app::Prompt {
-                        text: output,
-                        is_final: true,
+                    let mut output = io::Output {
+                        question: None,
+                        notifications: vec![
+                            penalty_notification,
+                            io::Notification::ScoreUpdate {
+                                human_points: human.points,
+                                computer_points: computer.points,
+                            }
+                        ],
                     };
-                }
-            }
-        }
 
-        command_line_app::Prompt {
-            text: output,
-            is_final: false
+                    if computer.points < 5 {
+                        output.question = Some(io::Question::ChooseBooster {
+                            available_boosters: human.available_boosters(),
+                        });
+
+                        slf.phase = Phase::BoosterChoosing {
+                            human,
+                            computer,
+                        };
+                    } else {
+                        output.notifications.push(
+                            io::Notification::GameOver {
+                                human_points: human.points,
+                                computer_points: computer.points,
+                            }
+                        );
+
+                        slf.phase = Phase::GameOver {
+                            human_points: human.points,
+                            computer_points: computer.points,
+                        };
+                    }
+
+                    Ok(output)
+                };
+
+                match booster_selection {
+                    io::BoosterSelection::Booster(selected_human_booster) => {
+                        if human.available_boosters().contains(&selected_human_booster) {
+                            let selected_computer_booster = computer.available_boosters()[
+                                self.generate_random_index_from_inclusive_max(1)
+                            ];
+                            let human = human.to_player(selected_human_booster);
+                            let computer = computer.to_player(selected_computer_booster);
+
+                            let human_booster = human.booster;
+                            let computer_booster = computer.booster;
+                            let available_human_moves = human.available_moves();
+
+                            self.phase = Phase::MoveChoosing {
+                                human,
+                                computer,
+                            };
+
+                            Ok(io::Output {
+                                question: Some(io::Question::ChooseMove { available_moves: available_human_moves }),
+                                notifications: vec![
+                                    io::Notification::BoosterSelection {
+                                        human_booster,
+                                        computer_booster,
+                                    }
+                                ],
+                            })
+                        } else {
+                            penalize_human(3, io::Notification::BoosterFromWrongCharacterPenalty {
+                                attempted_booster: selected_human_booster,
+                            }, human, computer, self)
+                        }
+                    },
+                    io::BoosterSelection::Nonexistent(attempted_booster_name) => {
+                        penalize_human(4, io::Notification::BoosterNonexistentPenalty {
+                            attempted_booster_name,
+                        }, human, computer, self)
+                    },
+                }
+            },
+            (
+                Phase::MoveChoosing { mut human, mut computer },
+                io::Answer::MoveSelection(move_selection)
+            ) => {
+                // Closure for the sake of DRY
+                let penalize_human = |waits, penalty_notification, mut human: Player, mut computer: Player, slf: &mut SinglePlayerNZSCGame| -> Result<io::Output, ()> {
+                    computer.points += human.penalize_waits(waits);
+
+                    let mut output = io::Output {
+                        question: None,
+                        notifications: vec![
+                            penalty_notification,
+                            io::Notification::ScoreUpdate {
+                                human_points: human.points,
+                                computer_points: computer.points,
+                            }
+                        ],
+                    };
+
+                    if computer.points < 5 {
+                        output.question = Some(io::Question::ChooseMove {
+                            available_moves: human.available_moves(),
+                        });
+
+                        slf.phase = Phase::MoveChoosing {
+                            human,
+                            computer,
+                        };
+                    } else {
+                        output.notifications.push(
+                            io::Notification::GameOver {
+                                human_points: human.points,
+                                computer_points: computer.points,
+                            }
+                        );
+
+                        slf.phase = Phase::GameOver {
+                            human_points: human.points,
+                            computer_points: computer.points,
+                        };
+                    }
+
+                    Ok(output)
+                };
+
+                match move_selection {
+                    io::MoveSelection::Move(selected_human_move) => {
+                        if human.available_moves().contains(&selected_human_move) {
+                            let available_computer_moves = computer.available_moves();
+                            let selected_computer_move = available_computer_moves[
+                                self.generate_random_index_from_inclusive_max(available_computer_moves.len() - 1)
+                            ];
+
+                            human.move_streak.add(selected_human_move);
+                            computer.move_streak.add(selected_computer_move);
+
+                            if SINGLE_USE_MOVES.contains(&selected_human_move)
+                                || DESTRUCTIVE_MOVES.contains(&selected_computer_move)
+                            {
+                                human.destroyed_moves.push(selected_human_move);
+                            }
+                            if SINGLE_USE_MOVES.contains(&selected_computer_move)
+                                || DESTRUCTIVE_MOVES.contains(&selected_human_move)
+                            {
+                                computer.destroyed_moves.push(selected_computer_move);
+                            }
+
+                            let mut points = outcomes::get_points(vec![selected_human_move, selected_computer_move]);
+
+                            if selected_human_move == Move::ShadowFireball && selected_computer_move == Move::Smash {
+                                if computer.booster == Booster::Strong {
+                                    points[0] = 0;
+                                    points[1] = 1;
+                                } else {
+                                    points[0] = 1;
+                                    points[1] = 0;
+                                }
+                            } else if selected_human_move == Move::Smash && selected_computer_move == Move::ShadowFireball {
+                                if human.booster == Booster::Strong {
+                                    points[0] = 1;
+                                    points[1] = 0;
+                                } else {
+                                    points[0] = 0;
+                                    points[1] = 1;
+                                }
+                            }
+
+                            human.points += points[0];
+                            computer.points += points[1];
+
+                            let who_gets_the_point = match (points[0], points[1]) {
+                                (0, 0) => io::WhoGetsThePoint::Neither,
+                                (0, 1) => io::WhoGetsThePoint::JustComputer,
+                                (1, 0) => io::WhoGetsThePoint::JustHuman,
+                                (1, 1) => io::WhoGetsThePoint::Both,
+                                (a, b) => panic!("Illegal outcome: {}-{}!", a, b),
+                            };
+
+                            let mut output = io::Output {
+                                question: None,
+                                notifications: vec![
+                                    io::Notification::MoveSelectionAndOutcome {
+                                        human_move: selected_human_move,
+                                        computer_move: selected_computer_move,
+                                        who_gets_the_point,
+                                    },
+                                    io::Notification::ScoreUpdate {
+                                        human_points: human.points,
+                                        computer_points: computer.points,
+                                    }
+                                ],
+                            };
+
+                            if human.points >= 5 || computer.points >= 5 {
+                                if human.points == computer.points {
+                                    output.question = Some(io::Question::ChooseMove {
+                                        available_moves: human.available_moves(),
+                                    });
+
+                                    output.notifications.push(
+                                        io::Notification::TiebreakingScoreSetback {
+                                            both_points: human.points,
+                                        }
+                                    );
+
+                                    human.points = 4;
+                                    computer.points = 4;
+
+                                    self.phase = Phase::MoveChoosing {
+                                        human,
+                                        computer,
+                                    };
+                                } else {
+                                    output.notifications.push(
+                                        io::Notification::GameOver {
+                                            human_points: human.points,
+                                            computer_points: computer.points,
+                                        }
+                                    );
+
+                                    self.phase = Phase::GameOver {
+                                        human_points: human.points,
+                                        computer_points: computer.points,
+                                    };
+                                }
+                            } else {
+                                output.question = Some(io::Question::ChooseMove {
+                                    available_moves: human.available_moves(),
+                                });
+
+                                self.phase = Phase::MoveChoosing {
+                                    human,
+                                    computer,
+                                };
+                            }
+
+                            Ok(output)
+                        } else {
+                            if human.destroyed_moves.contains(&selected_human_move) {
+                                if SINGLE_USE_MOVES.contains(&selected_human_move) {
+                                    penalize_human(4, io::Notification::MoveSingleUsePenalty {
+                                        attempted_move: selected_human_move,
+                                    }, human, computer, self)
+                                } else {
+                                    penalize_human(4, io::Notification::MoveDestroyedPenalty {
+                                        attempted_move: selected_human_move,
+                                    }, human, computer, self)
+                                }
+                            } else if human.move_streak.times == 3 && human.move_streak.repeated_move == Some(selected_human_move) {
+                                penalize_human(3, io::Notification::MoveThreeTimesInARowPenalty {
+                                    attempted_move: selected_human_move,
+                                }, human, computer, self)
+                            } else {
+                                let mut booster_moves = vec![];
+                                for booster in &human.character.get_boosters() {
+                                    booster_moves.extend(booster.get_moves());
+                                }
+
+                                if booster_moves.contains(&selected_human_move) {
+                                    penalize_human(2, io::Notification::MoveFromWrongBoosterPenalty {
+                                        attempted_move: selected_human_move,
+                                    }, human, computer, self)
+                                } else {
+                                    penalize_human(3, io::Notification::MoveFromWrongCharacterPenalty {
+                                        attempted_move: selected_human_move,
+                                    }, human, computer, self)
+                                }
+                            }
+                        }
+                    },
+                    io::MoveSelection::Nonexistent(attempted_move_name) => {
+                        penalize_human(4, io::Notification::MoveNonexistentPenalty {
+                            attempted_move_name,
+                        }, human, computer, self)
+                    },
+                }
+            },
+            _ => {
+                Err(())
+            },
         }
     }
 }

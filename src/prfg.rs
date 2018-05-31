@@ -3,6 +3,8 @@ pub struct PseudorandomFloatGenerator {
 }
 
 /// Generates floats (f64) between 0.0 (inclusive) and 1.0 (exclusive).
+///
+/// Uses [Xorshift](https://en.wikipedia.org/wiki/Xorshift)
 impl PseudorandomFloatGenerator {
     pub fn new(seed: u32) -> PseudorandomFloatGenerator {
         PseudorandomFloatGenerator {

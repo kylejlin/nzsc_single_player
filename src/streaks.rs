@@ -1,11 +1,19 @@
 use super::moves::Move;
 use super::characters::Character;
 
+/// Keeps track of how many times you chose a move in a row.
+///
+/// Used for enforcing three-times-in-a-row rule.
+#[derive(Clone, Copy)]
 pub struct MoveStreak {
     pub repeated_move: Option<Move>,
     pub times: u8
 }
 
+/// Keeps track of how many times you chose a character in a row.
+///
+/// Used for enforcing three-times-in-a-row rule.
+#[derive(Clone, Copy)]
 pub struct CharacterStreak {
     pub repeated_character: Option<Character>,
     pub times: u8
@@ -19,7 +27,7 @@ impl MoveStreak {
         }
     }
 
-    pub fn update(&mut self, new_move: Move) {
+    pub fn add(&mut self, new_move: Move) {
         let is_streak_continued = if let Some(repeated_move) = self.repeated_move {
             repeated_move == new_move
         } else {
@@ -43,7 +51,7 @@ impl CharacterStreak {
         }
     }
 
-    pub fn update(&mut self, new_character: Character) {
+    pub fn add(&mut self, new_character: Character) {
         let is_streak_continued = if let Some(repeated_character) = self.repeated_character {
             repeated_character == new_character
         } else {

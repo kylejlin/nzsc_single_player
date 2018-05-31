@@ -5,9 +5,9 @@ pub mod outcomes;
 pub mod streaks;
 pub mod players;
 
-pub mod command_line_app;
+pub mod io;
+pub mod prfg;
 
 pub mod single_player_game;
 
 mod helpers;
-mod prfg;
