@@ -48,7 +48,7 @@ impl CharacterlessPlayer {
         ];
 
         if self.character_streak.times == 3 {
-            characters.retain(|&c| Some(c) == self.character_streak.repeated_character);
+            characters.retain(|&c| Some(c) != self.character_streak.repeated_character);
         }
 
         characters
